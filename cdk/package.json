@@ -1,0 +1,22 @@
+{
+  "name": "finops-agent-cdk",
+  "version": "1.0.0",
+  "description": "FinOps Agent with AWS Bedrock AgentCore - CDK Infrastructure",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "aws-cdk": "^2.235.0",
+    "cdk-nag": "^2.37.55",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@aws-cdk/aws-bedrock-agentcore-alpha": "^2.235.1-alpha.0",
+    "aws-cdk-lib": "^2.235.0",
+    "constructs": "^10.3.0",
+    "source-map-support": "^0.5.21"
+  }
+}
