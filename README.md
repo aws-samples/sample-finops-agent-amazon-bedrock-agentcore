@@ -110,18 +110,15 @@ You'll be prompted for an email address during deployment. This creates the Cogn
 
 ```bash
 # Clone or download the repository
-cd finops-agentcore-solution
+cd sample-finops-agent-amazon-agentcore
 
 # Option 1: Run from repository root
-./scripts/deploy.sh
+./scripts/deploy-interactive.sh
 
 # Option 2: Run from scripts directory
 cd scripts
-./deploy.sh
+./deploy-interactive.sh
 
-# Option 3: Set email first (skip prompt)
-export ADMIN_EMAIL="your-email@example.com"
-./scripts/deploy.sh
 ```
 
 **Note:** Scripts can be run from either the repository root or the scripts directory.
@@ -322,3 +319,10 @@ For issues or questions:
 - **CDK Version**: 2.235.0
 - **Agent Core Alpha**: 2.235.1-alpha.0
 - **Model**: Amazon Nova Pro (us.amazon.nova-pro-v1:0)
+
+## Contributors
+
+- Ravi Kumar (Sr. Technical Account Manager)
+- Salman Ahmed (Sr. Technical Account Manager)
+- Sergio Barraza (Sr. Technical Account Manager)
+- Ankush Goyal (Sr. Technical Account Manager)
