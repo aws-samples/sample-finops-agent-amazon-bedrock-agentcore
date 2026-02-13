@@ -117,19 +117,21 @@ def initialize_agent_with_gateway():
         current_date = get_current_date_utc()
         
         # Store system prompt template for reuse
+        # IMPORTANT: Don't list specific tool names in system prompt
+        # Gateway prefixes tool names, so let the agent discover them dynamically
         system_prompt_template = f"""You are a FinOps AI assistant specialized in AWS cost optimization and analysis.
 
 Current date: {current_date}
 
-Available tools:
-- Cost Analysis: get_cost_and_usage, get_cost_by_service, get_cost_by_usage_type, get_cost_forecast, get_cost_anomalies
-- Budget Management: get_budgets, get_budget_details
-- Optimization: get_compute_optimizer_recommendations, get_rightsizing_recommendations, get_savings_plans_recommendations
-- Free Tier: get_free_tier_usage
-- Pricing: get_service_codes, get_service_attributes, get_attribute_values, get_service_pricing, get_ec2_pricing, get_rds_pricing, get_lambda_pricing, compare_instance_pricing
+You have access to tools for:
+- Cost Analysis: Retrieve AWS costs, analyze spending by service or usage type, forecast costs, detect anomalies
+- Budget Management: View budgets and their status
+- Optimization: Get recommendations for compute optimization, rightsizing, and savings plans
+- Free Tier: Monitor AWS Free Tier usage
+- Pricing: Look up AWS service pricing, compare instance costs, get pricing details
 
-Workflow:
-1. Use appropriate tools to gather cost and pricing information
+When a user asks about costs or pricing:
+1. Use the appropriate tools to gather the information
 2. Provide clear, actionable recommendations
 3. Always mention specific time periods, services, or resources in your responses
 
@@ -163,49 +165,40 @@ initialize_agent_with_gateway()
 def invoke(payload):
     """
     Process user input and return FinOps analysis
-    
-    Expected payload format:
-    {
-        "prompt": "What are my AWS costs for the last 7 days?",
-        "sessionId": "optional-session-id",
-        "userId": "optional-user-id"
-    }
     """
     global agent
-    
+
     user_message = payload.get("prompt", "")
     session_id = payload.get("sessionId", "default_session")
     user_id = payload.get("userId", "default_user")
-    
+
     if not user_message:
         logger.error("No prompt provided in payload")
         return {
             "error": "No prompt provided",
             "message": "Please provide a 'prompt' key in the input"
         }
-    
+
     logger.info(f"📨 Processing request - Session: {session_id}, User: {user_id}")
-    
+
     # Create agent with memory session manager if memory is configured
     agent_with_memory = agent  # Default to base agent
-    
+
     if MEMORY_ID and mcp_tools:  # Only configure memory if we have tools
         try:
             logger.info(f"💾 Configuring memory - Memory ID: {MEMORY_ID}, Actor: {user_id}, Session: {session_id}")
-            
-            # Create AgentCore Memory configuration
+
             memory_config = AgentCoreMemoryConfig(
                 memory_id=MEMORY_ID,
                 session_id=session_id,
                 actor_id=user_id
             )
-            
-            # Create session manager
+
             session_manager = AgentCoreMemorySessionManager(
                 agentcore_memory_config=memory_config,
                 region_name=AWS_REGION
             )
-            
+
             # Create agent with session manager (memory handled automatically)
             agent_with_memory = Agent(
                 model=model,
@@ -213,9 +206,9 @@ def invoke(payload):
                 system_prompt=system_prompt_template,  # Use stored system prompt
                 session_manager=session_manager  # This handles memory automatically!
             )
-            
+
             logger.info("✅ Agent configured with memory session manager")
-            
+
         except Exception as e:
             logger.warning(f"⚠️ Could not configure memory, using agent without memory: {e}")
             agent_with_memory = agent
@@ -224,12 +217,12 @@ def invoke(payload):
             logger.info("ℹ️ Memory not configured, using agent without memory")
         else:
             logger.warning("⚠️ Tools not available, using agent without memory")
-    
+
     # Invoke agent - memory is handled automatically by session_manager
     try:
         logger.info(f"🤖 Invoking agent with message: {user_message[:100]}...")
         result = agent_with_memory(user_message)
-        
+
         # Extract the final message from the result
         if hasattr(result, 'message'):
             final_message = result.message
@@ -239,25 +232,24 @@ def invoke(payload):
             final_message = result
         else:
             final_message = str(result)
-        
+
         # If final_message is a dict with role/content structure, extract the text
         if isinstance(final_message, dict):
             if 'content' in final_message and isinstance(final_message['content'], list):
-                # Extract text from content array: [{text: "..."}]
                 final_message = ''.join([item.get('text', '') for item in final_message['content'] if 'text' in item])
             elif 'text' in final_message:
                 final_message = final_message['text']
-        
+
         logger.info("✅ Request processed successfully")
-        
+
         response = {
-            "result": final_message,  # Simple format expected by frontend
+            "result": final_message,
             "sessionId": session_id,
             "userId": user_id
         }
-        
+
         return response
-        
+
     except Exception as e:
         logger.error(f"❌ Agent invocation error: {e}", exc_info=True)
         return {

@@ -1,0 +1,26 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo "=== Phase Pre-build - Transform Billing MCP Server and ECR Login ==="
+      - chmod +x transform-billing.sh
+      - ./transform-billing.sh
+      - echo "Logging in to Amazon ECR..."
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+
+  build:
+    commands:
+      - echo "=== Phase Build - Docker ARM64 image ==="
+      - cd mcp/src/billing-cost-management-mcp-server
+      - echo "Building Docker image..."
+      - docker build -t $ECR_REPO_URI:$CODEBUILD_BUILD_NUMBER .
+      - docker tag $ECR_REPO_URI:$CODEBUILD_BUILD_NUMBER $ECR_REPO_URI:latest
+      - echo "Docker image built and tagged."
+
+  post_build:
+    commands:
+      - echo "=== Phase Post-build - Push to ECR ==="
+      - docker push $ECR_REPO_URI:$CODEBUILD_BUILD_NUMBER
+      - docker push $ECR_REPO_URI:latest
+      - echo "Billing MCP image pushed successfully."
