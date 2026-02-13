@@ -11,6 +11,10 @@ cd mcp/src/aws-pricing-mcp-server
 SERVER_FILE="awslabs/aws_pricing_mcp_server/server.py"
 
 # Transform server.py
+# Note: The pricing MCP server uses mcp.server.fastmcp (from the mcp SDK),
+# which requires the Starlette/uvicorn approach for streamable-http transport.
+# This is different from the billing server which uses the fastmcp package
+# and supports mcp.run(transport='streamable-http') directly.
 echo "Transforming server.py..."
 
 python3 -c "
