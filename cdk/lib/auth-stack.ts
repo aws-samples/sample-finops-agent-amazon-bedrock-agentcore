@@ -39,6 +39,19 @@ export class AuthStack extends cdk.Stack {
       autoVerify: {
         email: true,
       },
+      userInvitation: {
+        emailSubject: 'Your FinOps Agent Login Credentials',
+        emailBody: [
+          '<h2>Welcome to FinOps Agent</h2>',
+          '<p>Your admin account has been created. You will be prompted to change your password on first login.</p>',
+          '<br/>',
+          '<p><strong>Username</strong></p>',
+          '<p style="font-family: monospace; font-size: 16px; background: #f0f0f0; padding: 8px; display: inline-block;">{username}</p>',
+          '<br/>',
+          '<p><strong>Temporary Password</strong></p>',
+          '<p style="font-family: monospace; font-size: 16px; background: #f0f0f0; padding: 8px; display: inline-block;">{####}</p>',
+        ].join('\n'),
+      },
       passwordPolicy: {
         minLength: 8,
         requireLowercase: true,
