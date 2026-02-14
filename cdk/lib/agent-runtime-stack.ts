@@ -152,10 +152,10 @@ export class AgentRuntimeStack extends cdk.Stack {
     // Outputs
     // ========================================
 
-    new cdk.CfnOutput(this, 'MainRuntimeArn', {
+    new cdk.CfnOutput(this, 'AgentCoreArn', {
       value: this.mainRuntimeArn,
-      description: 'Main Agent Runtime ARN',
-      exportName: `${this.stackName}-MainRuntimeArn`,
+      description: 'AgentCore Runtime ARN',
+      exportName: `${this.stackName}-AgentCoreArn`,
     });
 
     new cdk.CfnOutput(this, 'MemoryId', {
@@ -164,28 +164,19 @@ export class AgentRuntimeStack extends cdk.Stack {
       exportName: `${this.stackName}-MemoryId`,
     });
 
-    // ========================================
-    // Frontend Configuration (use these to configure your frontend app)
-    // ========================================
-
-    new cdk.CfnOutput(this, 'FrontendUserPoolId', {
+    new cdk.CfnOutput(this, 'UserPoolId', {
       value: props.userPoolId,
-      description: '🔧 Frontend Config: Cognito User Pool ID',
+      description: 'Cognito User Pool ID',
     });
 
-    new cdk.CfnOutput(this, 'FrontendUserPoolClientId', {
+    new cdk.CfnOutput(this, 'UserPoolClientId', {
       value: props.userPoolClientId,
-      description: '🔧 Frontend Config: Cognito User Pool Client ID',
+      description: 'Cognito User Pool Client ID',
     });
 
-    new cdk.CfnOutput(this, 'FrontendIdentityPoolId', {
+    new cdk.CfnOutput(this, 'IdentityPoolId', {
       value: props.identityPoolId,
-      description: '🔧 Frontend Config: Cognito Identity Pool ID',
-    });
-
-    new cdk.CfnOutput(this, 'FrontendRuntimeArn', {
-      value: this.mainRuntimeArn,
-      description: '🔧 Frontend Config: Main Agent Runtime ARN',
+      description: 'Cognito Identity Pool ID',
     });
 
     // ========================================
