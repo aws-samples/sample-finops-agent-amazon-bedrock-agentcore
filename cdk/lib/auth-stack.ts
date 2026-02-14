@@ -2,7 +2,6 @@ import * as cdk from 'aws-cdk-lib';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 import { NagSuppressions } from 'cdk-nag';
 
@@ -17,11 +16,9 @@ export class AuthStack extends cdk.Stack {
   public readonly userPoolArn: string;
   public readonly userPoolProviderName: string;
   public readonly oauthClientId: string;
-  public readonly oauthClientSecret: cdk.SecretValue;
   public readonly oauthTokenEndpoint: string;
   public readonly oauthAuthorizationEndpoint: string;
   public readonly oauthIssuer: string;
-  public readonly oauthCredentialsSecret: secretsmanager.ISecret;
   public readonly oauthProviderName: string;
   public readonly oauthProviderArn: string;
 
@@ -130,17 +127,6 @@ export class AuthStack extends cdk.Stack {
     });
 
     this.oauthClientId = m2mClient.userPoolClientId;
-    this.oauthClientSecret = m2mClient.userPoolClientSecret;
-
-    // Store M2M OAuth credentials in Secrets Manager for Gateway
-    this.oauthCredentialsSecret = new secretsmanager.Secret(this, 'OAuthCredentialsSecret', {
-      secretName: `${this.stackName}-oauth-credentials`,
-      description: 'M2M OAuth client credentials for AgentCore Gateway',
-      secretObjectValue: {
-        clientId: cdk.SecretValue.unsafePlainText(m2mClient.userPoolClientId),
-        clientSecret: m2mClient.userPoolClientSecret,
-      },
-    });
 
     // ========================================
     // Identity Pool
@@ -325,12 +311,6 @@ export class AuthStack extends cdk.Stack {
       description: 'Admin username',
     });
 
-    new cdk.CfnOutput(this, 'OAuthCredentialsSecretArn', {
-      value: this.oauthCredentialsSecret.secretArn,
-      description: 'OAuth Credentials Secret ARN',
-      exportName: `${this.stackName}-OAuthCredentialsSecretArn`,
-    });
-
     // ========================================
     // OAuth Provider - Created by external Python script after stack deploy
     // ========================================
@@ -368,14 +348,6 @@ export class AuthStack extends cdk.Stack {
     ], true);
 
 
-
-    // OAuth Credentials Secret suppression
-    NagSuppressions.addResourceSuppressions(this.oauthCredentialsSecret, [
-      {
-        id: 'AwsSolutions-SMG4',
-        reason: 'OAuth client credentials do not require automatic rotation - they are managed by Cognito and can be manually rotated if needed',
-      },
-    ], true);
 
     // Stack-level suppressions for CDK-created Lambda functions (Cognito domain custom resource)
     NagSuppressions.addStackSuppressions(this, [
