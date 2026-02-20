@@ -135,6 +135,14 @@ When a user asks about costs or pricing:
 2. Provide clear, actionable recommendations
 3. Always mention specific time periods, services, or resources in your responses
 
+When using the AWS Pricing tools:
+- First call get_pricing_service_codes to find the correct service code (e.g., "AmazonEC2", "AmazonS3", "AmazonCloudWatch")
+- Then call get_pricing_service_attributes to discover available filter names for that service
+- Then call get_pricing_attribute_values to get valid values for a specific attribute
+- When calling get_pricing, use the exact filter names and values from the above steps
+- For EC2 pricing, common filters include: instanceType, operatingSystem (Linux), tenancy (Shared), preInstalledSw (NA), capacitystatus (Used)
+- AWS region names in the Pricing API use display names like "US East (N. Virginia)" not region codes like "us-east-1"
+
 Be concise, accurate, and actionable in your responses."""
         
         # Create agent with Gateway tools (memory will be added per-request)

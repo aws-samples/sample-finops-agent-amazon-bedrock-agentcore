@@ -11,10 +11,9 @@ cd mcp/src/aws-pricing-mcp-server
 SERVER_FILE="awslabs/aws_pricing_mcp_server/server.py"
 
 # Transform server.py
-# Note: The pricing MCP server uses mcp.server.fastmcp (from the mcp SDK),
-# which requires the Starlette/uvicorn approach for streamable-http transport.
-# This is different from the billing server which uses the fastmcp package
-# and supports mcp.run(transport='streamable-http') directly.
+# The pricing server uses mcp.server.fastmcp (mcp SDK) which has a different API
+# than the fastmcp package used by billing. We patch the import to use the fastmcp
+# package instead, so both servers work identically.
 echo "Transforming server.py..."
 
 python3 -c "
@@ -23,55 +22,59 @@ import re
 with open('$SERVER_FILE', 'r') as f:
     content = f.read()
 
-# 1. Patch FastMCP constructor: add host and stateless_http=True
-old_constructor = \"mcp = FastMCP(\"
-new_constructor = \"mcp = FastMCP(host='0.0.0.0', stateless_http=True,\"
-if old_constructor in content:
-    content = content.replace(old_constructor, new_constructor, 1)
-    print('FastMCP constructor patched with host and stateless_http=True')
+# 1. Replace mcp SDK import with fastmcp package import
+old_import = 'from mcp.server.fastmcp import Context, FastMCP'
+new_import = 'from fastmcp import FastMCP, Context'
+if old_import in content:
+    content = content.replace(old_import, new_import)
+    print('Import patched: mcp.server.fastmcp -> fastmcp')
 else:
-    print('ERROR: Could not find FastMCP constructor')
-    exit(1)
+    print('WARNING: Expected import not found, checking alternatives...')
+    if 'from mcp.server.fastmcp import' in content:
+        content = re.sub(r'from mcp\.server\.fastmcp import.*', new_import, content)
+        print('Import patched via regex')
+    else:
+        print('ERROR: Could not find mcp.server.fastmcp import')
+        exit(1)
 
-# 2. Replace main() function
+# 2. Remove 'dependencies' kwarg from FastMCP constructor (not supported by fastmcp package)
+content = re.sub(r'\\s*dependencies=\\[.*?\\],?\\n?', '\\n', content, flags=re.DOTALL)
+print('Removed dependencies kwarg from FastMCP constructor')
+
+# 3. No other constructor changes needed - fastmcp package accepts params in run()
+print('FastMCP constructor: patched for fastmcp compatibility')
+
+# 4. Fix get_pricing tool schema: replace Pydantic model types with plain types
+# The AgentCore Gateway does not support \$ref in JSON schemas.
+# PricingFilter and OutputOptions Pydantic models cause \$ref in the generated schema.
+# Replace their type annotations with plain dict/list types.
+content = re.sub(
+    r'filters:\\s*Optional\\[List\\[PricingFilter\\]\\]',
+    'filters: Optional[List[dict]]',
+    content
+)
+content = re.sub(
+    r'output_options:\\s*Optional\\[OutputOptions\\]',
+    'output_options: Optional[dict]',
+    content
+)
+print('Patched get_pricing type annotations to avoid \$ref in schema')
+
+# 4b. Fix model_dump() calls - filters are now plain dicts, not Pydantic models
+content = content.replace(
+    'api_filters.extend([f.model_dump(by_alias=True) for f in filters])',
+    'api_filters.extend([f if isinstance(f, dict) else f.model_dump(by_alias=True) for f in filters])'
+)
+print('Patched model_dump calls for dict compatibility')
+
+# 5. Replace main() function - same approach as billing server
 old_main = '''def main():
     \"\"\"Run the MCP server with CLI argument support.\"\"\"
     mcp.run()'''
 
-new_main = '''def create_starlette_app():
-    \"\"\"Create the Starlette ASGI app for streamable-http transport.\"\"\"
-    import contextlib
-    from starlette.applications import Starlette
-    from starlette.responses import JSONResponse
-    from starlette.routing import Mount, Route
-
-    async def ping(request):
-        return JSONResponse({\"status\": \"ok\"})
-
-    async def health(request):
-        return JSONResponse({\"status\": \"healthy\"})
-
-    @contextlib.asynccontextmanager
-    async def lifespan(starlette_app):
-        async with mcp.session_manager.run():
-            yield
-
-    starlette_app = Starlette(
-        routes=[
-            Route(\"/ping\", ping, methods=[\"GET\"]),
-            Route(\"/health\", health, methods=[\"GET\"]),
-            Mount(\"/\", app=mcp.streamable_http_app()),
-        ],
-        lifespan=lifespan,
-    )
-    return starlette_app
-
-
-def main():
-    \"\"\"Run the MCP server with streamable-http transport via uvicorn.\"\"\"
-    import uvicorn
-    starlette_app = create_starlette_app()
-    uvicorn.run(starlette_app, host=\"0.0.0.0\", port=8000, log_level=\"info\")'''
+new_main = '''def main():
+    \"\"\"Run the MCP server with streamable-http transport.\"\"\"
+    mcp.run(transport='streamable-http', host='0.0.0.0', port=8000, stateless_http=True)'''
 
 if old_main in content:
     content = content.replace(old_main, new_main)
@@ -90,13 +93,35 @@ print('server.py transformation complete')
 "
 
 # Validate transformation
-grep -q 'uvicorn' "$SERVER_FILE" || { echo "ERROR: uvicorn not found in server.py"; exit 1; }
-grep -q 'streamable_http_app' "$SERVER_FILE" || { echo "ERROR: streamable_http_app not found"; exit 1; }
-grep -q 'stateless_http=True' "$SERVER_FILE" || { echo "ERROR: stateless_http not found"; exit 1; }
+grep -q 'streamable-http' "$SERVER_FILE" || { echo "ERROR: streamable-http not found in server.py"; exit 1; }
+grep -q 'port=8000' "$SERVER_FILE" || { echo "ERROR: port=8000 not found in server.py"; exit 1; }
+grep -q 'from fastmcp import' "$SERVER_FILE" || { echo "ERROR: fastmcp import not found in server.py"; exit 1; }
 echo "server.py transformation verified."
 
-# Add uvicorn and starlette dependencies to pyproject.toml
-echo "Adding uvicorn and starlette dependencies..."
+# Step 4c: Insert dict-to-model conversion code inside get_pricing function
+# This must be done outside the python3 -c block to avoid bash escaping issues
+python3 << 'PYEOF'
+with open("awslabs/aws_pricing_mcp_server/server.py", "r") as f:
+    content = f.read()
+
+old_line = "    logger.info(f'Getting pricing for {service_code} in {region}')"
+new_block = """    # Convert dict inputs to Pydantic models for internal use
+    from awslabs.aws_pricing_mcp_server.models import OutputOptions as _OutputOptions, PricingFilter as _PricingFilter
+    if output_options is not None and isinstance(output_options, dict):
+        output_options = _OutputOptions(**output_options)
+    if filters is not None:
+        filters = [_PricingFilter(**f) if isinstance(f, dict) else f for f in filters]
+    logger.info(f'Getting pricing for {service_code} in {region}')"""
+
+content = content.replace(old_line, new_block, 1)
+
+with open("awslabs/aws_pricing_mcp_server/server.py", "w") as f:
+    f.write(content)
+print("Added dict-to-model conversion inside get_pricing")
+PYEOF
+
+# Add fastmcp dependency to pyproject.toml and regenerate lockfile
+echo "Adding fastmcp dependency..."
 python3 -c "
 with open('pyproject.toml', 'r') as f:
     content = f.read()
@@ -104,23 +129,35 @@ with open('pyproject.toml', 'r') as f:
 import re
 content = re.sub(
     r'(dependencies\s*=\s*\[)',
-    r'\1\n    \"uvicorn>=0.30.0\",\n    \"starlette>=0.38.0\",',
+    r'\1\n    \"fastmcp>=2.0.0,<3.0.0\",',
     content,
     count=1
 )
 
 with open('pyproject.toml', 'w') as f:
     f.write(content)
-print('Dependencies added to pyproject.toml')
+print('fastmcp dependency added to pyproject.toml')
 "
-grep -q 'uvicorn' pyproject.toml || { echo "ERROR: uvicorn not in pyproject.toml"; exit 1; }
-echo "pyproject.toml transformation verified."
+grep -q 'fastmcp' pyproject.toml || { echo "ERROR: fastmcp not in pyproject.toml"; exit 1; }
+# Install uv and regenerate lockfile with the new dependency
+echo "Regenerating uv.lock with fastmcp dependency..."
+pip3 install uv --quiet 2>/dev/null || python3 -m pip install uv --quiet
+uv lock --python 3.13
+echo "pyproject.toml transformation verified, lockfile regenerated."
 
-# Disable UV_FROZEN in Dockerfile
-echo "Disabling UV_FROZEN in Dockerfile..."
+# Disable UV_FROZEN in Dockerfile and remove --frozen from uv sync
+echo "Disabling UV_FROZEN and --frozen in Dockerfile..."
 sed -i 's/UV_FROZEN=1/UV_FROZEN=0/g' Dockerfile
 sed -i '/ENV UV_FROZEN/d' Dockerfile
-echo "UV_FROZEN handling complete."
+sed -i 's/ --frozen//g' Dockerfile
+echo "UV_FROZEN and --frozen handling complete."
+# Verify
+if grep -q 'frozen' Dockerfile; then
+    echo "WARNING: frozen still in Dockerfile:"
+    grep 'frozen' Dockerfile
+else
+    echo "Verified: --frozen removed from Dockerfile"
+fi
 
 # Transform Dockerfile: add EXPOSE and update entrypoint
 echo "Transforming Dockerfile..."

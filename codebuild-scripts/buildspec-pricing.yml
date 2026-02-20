@@ -14,7 +14,7 @@ phases:
       - echo "=== Phase Build - Docker ARM64 image ==="
       - cd mcp/src/aws-pricing-mcp-server
       - echo "Building Docker image..."
-      - docker build -t $ECR_REPO_URI:$CODEBUILD_BUILD_NUMBER .
+      - docker build --no-cache -t $ECR_REPO_URI:$CODEBUILD_BUILD_NUMBER .
       - docker tag $ECR_REPO_URI:$CODEBUILD_BUILD_NUMBER $ECR_REPO_URI:latest
       - echo "Docker image built and tagged."
 
