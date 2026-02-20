@@ -275,7 +275,7 @@ export class MCPRuntimeStack extends cdk.Stack {
     NagSuppressions.addStackSuppressions(this, [
       {
         id: 'AwsSolutions-L1',
-        reason: 'Python 3.13 is the latest Lambda runtime version available',
+        reason: 'Python 3.14 is the latest Lambda runtime version available',
       },
       {
         id: 'AwsSolutions-IAM4',

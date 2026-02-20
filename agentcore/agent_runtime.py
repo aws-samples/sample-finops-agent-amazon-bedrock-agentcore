@@ -179,14 +179,14 @@ def invoke(payload):
             "message": "Please provide a 'prompt' key in the input"
         }
 
-    logger.info(f"📨 Processing request - Session: {session_id}, User: {user_id}")
+    logger.info(f"📨 Processing request - Session: {session_id}")
 
     # Create agent with memory session manager if memory is configured
     agent_with_memory = agent  # Default to base agent
 
     if MEMORY_ID and mcp_tools:  # Only configure memory if we have tools
         try:
-            logger.info(f"💾 Configuring memory - Memory ID: {MEMORY_ID}, Actor: {user_id}, Session: {session_id}")
+            logger.info(f"💾 Configuring memory - Memory ID: {MEMORY_ID}, Session: {session_id}")
 
             memory_config = AgentCoreMemoryConfig(
                 memory_id=MEMORY_ID,
@@ -220,7 +220,7 @@ def invoke(payload):
 
     # Invoke agent - memory is handled automatically by session_manager
     try:
-        logger.info(f"🤖 Invoking agent with message: {user_message[:100]}...")
+        logger.info("🤖 Invoking agent...")
         result = agent_with_memory(user_message)
 
         # Extract the final message from the result

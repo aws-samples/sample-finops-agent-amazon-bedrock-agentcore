@@ -83,7 +83,7 @@ export class AgentCoreGatewayStack extends cdk.Stack {
     // ========================================
 
     const oauthProviderFn = new lambda.Function(this, 'OAuthProviderFunction', {
-      runtime: lambda.Runtime.PYTHON_3_12,
+      runtime: lambda.Runtime.PYTHON_3_14,
       handler: 'index.handler',
       timeout: cdk.Duration.minutes(2),
       code: lambda.Code.fromInline(`

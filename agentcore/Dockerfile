@@ -1,5 +1,5 @@
 # Multi-stage build for FinOps Agent Runtime
-FROM public.ecr.aws/docker/library/python:3.13-slim AS builder
+FROM public.ecr.aws/docker/library/python:3.14-slim AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,13 +17,13 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # Final stage
-FROM public.ecr.aws/docker/library/python:3.13-slim
+FROM public.ecr.aws/docker/library/python:3.14-slim
 
 # Set working directory
 WORKDIR /app
 
 # Copy installed packages from builder
-COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
+COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code

@@ -91,7 +91,7 @@ export class ImageStack extends cdk.Stack {
 
     // --- Build Trigger Lambda ---
     const buildTriggerFn = new lambda.Function(this, 'BuildTriggerFunction', {
-      runtime: lambda.Runtime.PYTHON_3_12,
+      runtime: lambda.Runtime.PYTHON_3_14,
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../../lambda/build-trigger')),
       timeout: cdk.Duration.minutes(1),
@@ -101,7 +101,7 @@ export class ImageStack extends cdk.Stack {
 
     // --- Build Waiter Lambda ---
     const buildWaiterFn = new lambda.Function(this, 'BuildWaiterFunction', {
-      runtime: lambda.Runtime.PYTHON_3_12,
+      runtime: lambda.Runtime.PYTHON_3_14,
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../../lambda/build-waiter')),
       timeout: cdk.Duration.minutes(15),
@@ -380,7 +380,7 @@ export class ImageStack extends cdk.Stack {
     }));
 
     const triggerFn = new cdk.aws_lambda.Function(this, 'MainRuntimeBuildTriggerFn', {
-      runtime: cdk.aws_lambda.Runtime.PYTHON_3_12,
+      runtime: cdk.aws_lambda.Runtime.PYTHON_3_14,
       handler: 'index.handler',
       code: cdk.aws_lambda.Code.fromAsset(path.join(__dirname, '../../lambda/build-trigger')),
       timeout: cdk.Duration.minutes(1),
