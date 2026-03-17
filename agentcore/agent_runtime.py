@@ -25,7 +25,7 @@ app = BedrockAgentCoreApp()
 # Get configuration from environment
 GATEWAY_ARN = os.environ.get('GATEWAY_ARN')
 MEMORY_ID = os.environ.get('MEMORY_ID')
-MODEL_ID = os.environ.get('MODEL_ID', 'us.amazon.nova-pro-v1:0')
+MODEL_ID = os.environ.get('MODEL_ID', 'us.anthropic.claude-sonnet-4-5-20250929-v1:0')
 AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1')
 
 logger.info(f"Gateway ARN: {GATEWAY_ARN}")
