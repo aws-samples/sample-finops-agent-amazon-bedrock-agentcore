@@ -310,4 +310,4 @@ client.create_oauth2_credential_provider(
 
 **Cause**: Amazon Nova models have issues with hyphens in tool names. Bedrock's `ConverseStream` API expects tool names matching `^[a-zA-Z][a-zA-Z0-9_]*$`. Nova enforces this strictly; Claude does not.
 
-**Fix**: Switched from `us.amazon.nova-pro-v1:0` to `us.anthropic.claude-3-7-sonnet-20250219-v1:0`. Claude handles hyphenated tool names correctly. Alternative fix: rename tools at the source in the transform scripts.
+**Fix**: Switched from `us.amazon.nova-pro-v1:0` to `us.anthropic.claude-sonnet-4-5-20250929-v1:0`. Claude handles hyphenated tool names correctly. Alternative fix: rename tools at the source in the transform scripts.

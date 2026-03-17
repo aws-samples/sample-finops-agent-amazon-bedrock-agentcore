@@ -24,7 +24,7 @@ export class AgentRuntimeStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: AgentRuntimeStackProps) {
     super(scope, id, props);
 
-    const foundationModel = 'us.anthropic.claude-3-7-sonnet-20250219-v1:0';
+    const foundationModel = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0';
 
     // ========================================
     // IAM Roles
@@ -72,7 +72,7 @@ export class AgentRuntimeStack extends cdk.Stack {
       ],
       resources: [
         `arn:aws:bedrock:*::foundation-model/${foundationModel}`,
-        `arn:aws:bedrock:*::foundation-model/anthropic.claude-3-7-sonnet-20250219-v1:0`,
+        `arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0`,
         `arn:aws:bedrock:*:${this.account}:inference-profile/${foundationModel}`,
       ],
     }));
