@@ -131,8 +131,7 @@ export class AgentRuntimeStack extends cdk.Stack {
       ),
       networkConfiguration: agentcore.RuntimeNetworkConfiguration.usingPublicNetwork(),
       environmentVariables: {
-        // MEMORY_ID temporarily disabled to debug streaming error
-        // MEMORY_ID: memory.memoryId,
+        MEMORY_ID: memory.memoryId,
         MODEL_ID: foundationModel,
         AWS_REGION: this.region,
         GATEWAY_ARN: props.gatewayArn,
