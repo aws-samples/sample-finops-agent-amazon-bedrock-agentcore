@@ -1,314 +1,228 @@
-# FinOps Agent with Amazon Bedrock AgentCore and MCP Servers
+Managing costs across multiple AWS accounts often requires finance teams to query data from several sources to get a complete view of spending and optimization opportunities. In this post, you learn how to build a FinOps agent using [Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/agentcore/) that helps your finance team manage AWS costs across multiple accounts. This conversational agent consolidates data from [AWS Cost Explorer](https://aws.amazon.com/aws-cost-management/aws-cost-explorer/), [AWS Budgets](https://aws.amazon.com/aws-cost-management/aws-budgets/), and [AWS Compute Optimizer](https://aws.amazon.com/compute-optimizer/) into a single interface, so your team can ask questions like "What are my top cost drivers this month?" and receive immediate answers.
 
-A FinOps AI agent that uses AWS Labs MCP servers (Billing and Pricing) deployed as AgentCore Runtimes, unified behind an AgentCore Gateway, and powered by Claude Sonnet 3.7.
+You learn to set up the architecture, deploy the solution using [AWS Cloud Development Kit (AWS CDK)](https://aws.amazon.com/cdk/), and interact with your cost data through natural language queries. The solution uses AgentCore, [Anthropic Claude Sonnet 4.5](https://aws.amazon.com/blogs/aws/introducing-claude-sonnet-4-5-in-amazon-bedrock-anthropics-most-intelligent-model-best-for-coding-and-complex-agents/), the [Strands Agent SDK](https://strandsagents.com/), and the [Model Context Protocol (MCP)](https://aws.amazon.com/solutions/guidance/deploying-model-context-protocol-servers-on-aws/).
 
+You will have conversation memory that retains 30 days of context, so you can ask follow-up questions without repeating information. Over 20 specialized tools cover the full spectrum of cost management, from analysis to optimization, alleviating the need to manually navigate multiple AWS consoles. Natural language interaction makes cost data accessible to team members across your organization.
 
-## Architecture
+## Solution overview
 
-```
-┌──────────────┐     Cognito      ┌───────────────────┐      IAM       ┌─────────────────┐
-│   Frontend   │────(Identity)───▶│   Main Runtime    │───(SigV4)────▶│    Gateway      │
-│   (Amplify)  │                  │  (finops_runtime) │               │ (finops-gateway) │
-└──────────────┘                  │                   │               │   AWS_IAM auth   │
-                                  │  Claude 3.7       │               └────────┬─────────┘
-                                  │  + Memory         │                        │
-                                  └───────────────────┘                        │ OAuth
-                                                                    (AuthStack Cognito M2M)
-                                                                               │
-                                                          ┌───────────────────┬┴───────────────────┐
-                                                          │                                        │
-                                                          ▼                                        ▼
-                                                ┌──────────────────┐                    ┌──────────────────┐
-                                                │  Billing MCP     │                    │  Pricing MCP     │
-                                                │  Runtime         │                    │  Runtime         │
-                                                │  (JWT auth)      │                    │  (JWT auth)      │
-                                                │                  │                    │                  │
-                                                │  streamable-http │                    │  streamable-http │
-                                                │  on port 8000    │                    │  on port 8000    │
-                                                └────────┬─────────┘                    └────────┬─────────┘
-                                                         │                                       │
-                                                         ▼                                       ▼
-                                                ┌──────────────────┐                    ┌──────────────────┐
-                                                │  AWS Cost        │                    │  AWS Pricing     │
-                                                │  Explorer API    │                    │  API             │
-                                                │  Budgets API     │                    │                  │
-                                                │  Compute Opt.    │                    │                  │
-                                                │  Free Tier API   │                    │                  │
-                                                └──────────────────┘                    └──────────────────┘
-```
+This solution consists of two main components: the authentication and frontend layer and the [Amazon Bedrock AgentCore Runtime](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agents-tools-runtime.html) with tools and memory. [Amazon Cognito](https://aws.amazon.com/cognito/) manages user authentication while the AgentCore Runtime processes cost management queries. The authentication and frontend layer uses [AWS Amplify](https://aws.amazon.com/amplify/) to host the web application interface and Amazon Cognito for user authentication. Amazon Cognito handles user authentication and provides temporary AWS credentials through Identity Pools.
 
-## Communication Flow
+The custom agent for FinOps is hosted on AgentCore Runtime and built with the Strands Agent that integrates with [Amazon Bedrock](https://aws.amazon.com/bedrock/) to access a [Large Language Model (LLM)](https://aws.amazon.com/what-is/large-language-model/). [Amazon Bedrock AgentCore Gateway](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway.html) manages tool invocations and routes requests to backend services using [AWS Identity and Access Management (IAM)](https://aws.amazon.com/iam/) authentication. MCP Servers are hosted on AgentCore Runtime to provide access to AWS Billing and Cost Management tools. [AgentCore Memory](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/memory.html) maintains conversation history for up to 30 days of context retention. [AgentCore Identity](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/identity.html) manages the OAuth 2.0 credential lifecycle for secure communication between the Gateway and MCP server runtimes. It stores the Amazon Cognito M2M client credentials as an OAuth credential provider and issues tokens on behalf of the Gateway when it needs to authenticate with the MCP runtimes.
 
-1. **Frontend → Main Runtime**: User authenticates via Cognito Identity Pool. The authenticated role grants `InvokeAgentRuntime` on the main runtime. Frontend calls the runtime endpoint with Cognito credentials.
+With these components in place, the following section examines how they work together in the complete architecture.
 
-2. **Main Runtime → Gateway**: The agent code uses `InvokeGateway` API with IAM SigV4 signing (runtime's execution role credentials). Gateway uses `AWS_IAM` authorizer — no JWT needed for this hop.
+## Architecture diagram
 
-3. **Gateway → MCP Runtimes**: Gateway obtains an OAuth token from AgentCore Identity using the OAuth credential provider (configured with AuthStack's Cognito M2M client). The token is sent as a JWT Bearer to the MCP runtimes. Each runtime validates the JWT against AuthStack's Cognito discovery URL.
+The following diagram represents the solution architecture, which contains five key sections:
 
-4. **MCP Runtimes → AWS APIs**: Each runtime's execution role has specific IAM permissions for the AWS APIs it needs (Cost Explorer, Budgets, Pricing, etc.).
+<!-- TODO: Add architecture diagram image -->
+![FinOps AgentCore Agent Diagram](IMAGE_PLACEHOLDER)
 
-## Deployment Sequence
+**Section A** – Authentication Infrastructure: First, the `FinOpsAuthStack` CDK stack deploys the authentication infrastructure (Amazon Cognito User Pool, Identity Pool, M2M client, resource server, and IAM roles). The User Pool handles user authentication, the M2M client enables machine-to-machine OAuth 2.0 flows between the Gateway and MCP runtimes, and the Identity Pool provides temporary AWS credentials that allow the frontend application to securely communicate with the AgentCore Runtime.
 
-All 5 stacks deploy with a single command. CDK handles ordering via dependencies.
+**Section B** – Image Build Infrastructure: Next, the `FinOpsImageStack` CDK stack deploys the container image build pipeline (Amazon S3 bucket, [AWS CodeBuild](https://aws.amazon.com/codebuild/) projects, and [Amazon Elastic Container Registry (Amazon ECR)](https://aws.amazon.com/ecr/) repositories). CodeBuild clones the upstream AWS Labs MCP servers, applies a stdio-to-HTTP transformation (patching them for streamable-http transport), and builds AWS Graviton (ARM64) container images that are stored in Amazon ECR for use by the AgentCore Runtimes.
 
-```bash
-export ADMIN_EMAIL="your-email@example.com"
-cd cdk && npm install && npm run build && npx cdk bootstrap && npx cdk deploy --all --require-approval never
-```
+**Section C** – MCP Server Runtimes: The `FinOpsMCPRuntimeStack` CDK stack deploys two AgentCore Runtimes running the transformed AWS Labs MCP servers (Billing and Pricing). Each runtime is configured with JWT authorization using the AuthStack's Amazon Cognito and has specific IAM permissions for the AWS APIs it accesses. For example, AWS Billing and Cost Management and AWS Compute Optimizer for the Billing runtime, and AWS Pricing for the Pricing runtime.
 
-After deployment, use the following outputs from `FinOpsAgentRuntimeStack` to configure your frontend application:
-- `FrontendUserPoolId` — Cognito User Pool ID
-- `FrontendUserPoolClientId` — Cognito User Pool Client ID
-- `FrontendIdentityPoolId` — Cognito Identity Pool ID
-- `FrontendRuntimeArn` — Main Agent Runtime ARN
+**Section D** – AgentCore Gateway: The `FinOpsAgentCoreGatewayStack` CDK stack deploys the AgentCore Gateway with AWS_IAM authorization, an OAuth credential provider (registered with AgentCore Identity using the AuthStack's Cognito M2M credentials), and two MCP server targets pointing to the Billing and Pricing runtimes. The Gateway provides a unified tool discovery and invocation endpoint, handling OAuth token exchange for outbound authentication to the MCP runtimes.
 
-### Stack 1: FinOpsAuthStack
+**Section E** – Main Agent Runtime: Finally, the `FinOpsAgentRuntimeStack` CDK stack deploys the main AgentCore Runtime. It uses the Strands Agent Framework with Claude Sonnet 3.7 to orchestrate model invocations and tool calls through the Gateway. It also deploys AgentCore Memory for conversation history. The Runtime connects to the Gateway via IAM SigV4 authentication, discovers 24 tools from both MCP servers, and routes tool requests through the Gateway to retrieve cost, billing, and pricing data.
 
-Cognito authentication for the entire solution.
+### Using the web application
 
-| Resource | Purpose |
-|----------|---------|
-| Cognito User Pool | User authentication |
-| Resource Server (`mcp-runtime-server/invoke`) | OAuth scope for M2M flow |
-| User Client | Frontend user authentication (no secret) |
-| M2M Client | Gateway → Runtime OAuth flow (with secret, client_credentials) |
-| Identity Pool | Maps Cognito users to IAM roles |
-| Authenticated Role | `InvokeAgentRuntime` on `finops_billing_mcp*`, `finops_pricing_mcp*`, `finops_runtime*` |
-| Secrets Manager Secret | Stores M2M client credentials |
+Now that you understand the architecture, let's walk through a sample request flow. For example, what happens when a user asks "What are my AWS costs for January 2026?"
 
-### Stack 2: FinOpsImageStack
-
-Builds Docker images for all runtimes using CodeBuild.
-
-| Resource | Purpose |
-|----------|---------|
-| 3 ECR Repositories | `finops-agent-runtime`, `finops-billing-mcp-runtime`, `finops-pricing-mcp-runtime` |
-| S3 Bucket | Stores CodeBuild source scripts |
-| 3 CodeBuild Projects | Builds ARM64 Docker images |
-| Build Trigger Lambda | Starts CodeBuild on stack deploy |
-| Build Waiter Lambda | Polls build status until complete |
-
-For billing and pricing MCP servers, CodeBuild:
-1. Clones the upstream [AWS Labs MCP repo](https://github.com/awslabs/mcp)
-2. Patches `server.py` to use `streamable-http` transport on port 8000
-3. Updates Dockerfile (EXPOSE 8000, entrypoint, healthcheck)
-4. Builds ARM64 image and pushes to ECR
-
-### Stack 3: FinOpsMCPRuntimeStack
-
-Two AgentCore Runtimes running the patched AWS Labs MCP servers.
-
-| Resource | Purpose |
-|----------|---------|
-| Billing MCP Runtime (`finops_billing_mcp_jwt_v1`) | Runs billing MCP server with JWT auth |
-| Pricing MCP Runtime (`finops_pricing_mcp_jwt_v1`) | Runs pricing MCP server with JWT auth |
-| Billing Runtime Role | ECR pull, CloudWatch Logs, Cost Explorer/Budgets/Compute Optimizer APIs |
-| Pricing Runtime Role | ECR pull, CloudWatch Logs, Pricing API |
-
-JWT Authorization: `AllowedClients` = AuthStack M2M client ID, `DiscoveryUrl` = AuthStack Cognito.
-
-### Stack 4: FinOpsAgentCoreGatewayStack
-
-AgentCore Gateway that unifies both MCP servers behind a single endpoint.
-
-| Resource | Purpose |
-|----------|---------|
-| Gateway (`finops-gateway`) | MCP protocol, `AWS_IAM` auth |
-| OAuth Provider (Lambda custom resource) | Creates AgentCore Identity credential provider using AuthStack's Cognito |
-| Gateway Token Exchange Policy | `GetWorkloadAccessToken`, `GetResourceOauth2Token` (wildcard) |
-| Gateway Default Policy | Scoped access to OAuth provider ARN and auto-created secret |
-| Billing MCP Target (`billingMcp`) | Points to billing runtime endpoint |
-| Pricing MCP Target (`pricingMcp`) | Points to pricing runtime endpoint |
-
-### Stack 5: FinOpsAgentRuntimeStack
-
-The main agent runtime that users interact with.
-
-| Resource | Purpose |
-|----------|---------|
-| Runtime (`finops_runtime`) | Runs agent code with Claude 3.7 |
-| Memory (`finops_memory`) | 30-day conversation memory |
-| Runtime Role | ECR pull, CloudWatch Logs, Bedrock model invocation, Memory access, Gateway invocation |
-
-Environment variables: `MODEL_ID`, `GATEWAY_ARN`, `MEMORY_ID`, `AWS_REGION`.
-
-## Project Structure
-
-```
-├── agentcore/                    # Main agent runtime code
-│   ├── agent_runtime.py          # Agent logic (Strands + Gateway MCP tools)
-│   ├── streamable_http_sigv4.py  # SigV4 auth for Gateway HTTP calls
-│   ├── Dockerfile                # Multi-stage build for agent container
-│   └── requirements.txt          # Python dependencies
-├── codebuild-scripts/            # stdio-to-HTTP transformation scripts
-│   ├── buildspec-billing.yml     # CodeBuild spec for billing MCP
-│   ├── buildspec-pricing.yml     # CodeBuild spec for pricing MCP
-│   ├── transform-billing.sh      # Patches billing server for HTTP transport
-│   └── transform-pricing.sh      # Patches pricing server for HTTP transport
-├── cdk/                          # CDK infrastructure
-│   ├── bin/app.ts                # Stack wiring and deployment sequence
-│   ├── lib/
-│   │   ├── auth-stack.ts         # Cognito + Identity Pool
-│   │   ├── image-stack.ts        # ECR + CodeBuild
-│   │   ├── mcp-runtime-stack.ts  # MCP server runtimes
-│   │   ├── gateway-stack.ts      # Gateway + OAuth + targets
-│   │   └── agent-runtime-stack.ts # Main agent runtime + memory
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── cdk.json
-├── lambda/                       # CloudFormation custom resource Lambdas
-│   ├── build-trigger/index.py    # Triggers CodeBuild
-│   └── build-waiter/index.py     # Polls build status
-└── amplify-frontend/             # React frontend (pre-built)
-    └── AWS-Amplify-Frontend.zip
-```
+1. The FinOps user accesses the web application hosted on AWS Amplify, which serves the frontend (HTML, CSS, JavaScript).
+2. The user authenticates with Amazon Cognito. Amazon Cognito validates the credentials and returns temporary AWS credentials from the Identity Pool.
+3. The frontend sends the user's question to the AgentCore Runtime and uses the temporary AWS credentials to call `InvokeAgentRuntime`.
+4. The Strands agent inside the runtime sends the question along with 24 available tool definitions to Claude Sonnet 4.5 on Amazon Bedrock. The model analyzes the question and decides it needs to call the `billingMcp__cost_explorer`
+5. The agent receives the tool call request from the model and routes it to the AgentCore Gateway using IAM SigV4 authentication (`InvokeGateway`).
+6. The Gateway must authenticate with the MCP runtime. It contacts AgentCore Identity to obtain an OAuth 2.0 token using the registered credential provider (backed by Cognito M2M client credentials).
+7. The Gateway sends the MCP tools/call request with the OAuth token to the Billing MCP Runtime.
+8. The Billing MCP Runtime executes the actual API call to AWS Cost Explorer and requests cost and usage data for January 2026 using its execution role.
+9. The cost data flows back through the chain. Billing MCP Runtime responds to the Gateway, then the Gateway responds to the agent. The agent sends the cost data back to Amazon Bedrock, where Claude generates a natural language summary of the January 2026 costs.
+10. The formatted response is returned to the FinOps user, displaying the cost breakdown in the chat interface.
 
 ## Prerequisites
 
-- AWS CLI configured with appropriate permissions
-- Node.js 18+ and npm
-- CDK CLI (`npm install -g aws-cdk`)
-- Claude Sonnet 3.7 model access enabled in Amazon Bedrock (us-east-1)
+Before you begin, verify that you have:
 
-## Key Design Decisions
+- An [AWS account](https://signin.aws.amazon.com/signin?redirect_uri=https%3A%2F%2Fportal.aws.amazon.com%2Fbilling%2Fsignup%2Fresume&client_id=signup) with appropriate permissions for the following services:
+  - Amazon Bedrock, AgentCore, Amazon ECR, AWS Lambda, Amazon Cognito, AWS CodeBuild, and IAM
+- [AWS Command Line Interface (AWS CLI)](https://aws.amazon.com/cli/) (v2.x) configured with credentials
+- [Node.js](https://nodejs.org/) (v18 or later) and [npm](https://www.npmjs.com/) installed
+- [Python](https://www.python.org/) 3.13 or higher installed
+- [AWS CDK](https://docs.aws.amazon.com/cdk/v2/guide/getting-started.html) installed and bootstrapped in your AWS account
+  - Install: `npm install -g aws-cdk`
+  - Bootstrap: `cdk bootstrap aws://AWS-ACCOUNT-NUMBER/AWS-REGION`
 
-- **Claude Sonnet 3.7** over Nova Pro: Nova has issues with hyphens in MCP tool names. Claude handles them correctly.
-- **AWS_IAM** Gateway auth: Main Runtime calls Gateway via `InvokeGateway` API (IAM). No need for JWT on this hop.
-- **Separate Cognito for OAuth**: AuthStack's Cognito is shared between MCP runtime JWT auth and Gateway's OAuth provider. Same issuer = tokens are trusted.
-- **stdio-to-HTTP transform**: AWS Labs MCP servers only support stdio. CodeBuild patches them at build time to use `streamable-http` transport via `mcp.run(transport='streamable-http')`.
-- **Least privilege IAM**: No `BedrockAgentCoreFullAccess`. Each role has only the specific permissions it needs.
+## Deploy the solution using AWS CDK
 
-## Cleanup
+This solution deploys to the us-east-1 AWS Region. The deployment uses the AWS CDK to provision the infrastructure through three [AWS CloudFormation](https://aws.amazon.com/cloudformation/) stacks.
+
+To deploy the solution:
+
+### Step 1: Clone the repository
 
 ```bash
-cd cdk && npx cdk destroy --all
+git clone https://github.com/aws-samples/sample-finops-agent-amazon-bedrock-agentcore
+cd sample-finops-agent-amazon-bedrock-agentcore
 ```
 
-## Troubleshooting Guide: Errors and Solutions
+### Step 2: Set environment variables
 
-Issues encountered during development and their fixes, documented for reference.
+Replace your-email@example.com with your email address to receive the temporary admin password:
 
-### 1. X-Ray Propagator Not Found
-
-**Error**: `ValueError: Propagator xray not found` in MCP runtime logs.
-
-**Cause**: AWS Labs MCP servers use OpenTelemetry with X-Ray propagator, which isn't installed in the container.
-
-**Fix**: Set environment variable `OTEL_PROPAGATORS=tracecontext,baggage` to use standard propagators instead of X-Ray.
-
----
-
-### 2. Gateway Target Validation Timeout
-
-**Error**: `Gateway target update failed or timed out: Polling timeout or max attempts reached: UPDATING`
-
-**Cause**: AWS Labs MCP servers run with stdio transport by default. The Gateway needs HTTP endpoints to validate targets during `CreateGatewayTarget`.
-
-**Fix**: Transform the MCP servers at build time to use `streamable-http` transport. CodeBuild patches `server.py` to call `mcp.run(transport='streamable-http', host='0.0.0.0', port=8000)`.
-
----
-
-### 3. Gateway Role Missing Token Exchange Permissions
-
-**Error**: Gateway could not negotiate OAuth tokens with AgentCore Identity to authenticate outbound requests to MCP runtimes.
-
-**Cause**: Gateway role was missing `bedrock-agentcore:GetWorkloadAccessToken` and `bedrock-agentcore:GetResourceOauth2Token`.
-
-**Fix**: Two policies on the Gateway role:
-- **Scoped policy**: `GetResourceOauth2Token`, `GetWorkloadAccessToken`, `secretsmanager:GetSecretValue`, `secretsmanager:DescribeSecret` on the OAuth provider's token-vault ARN and auto-created secret.
-- **Wildcard policy**: `GetWorkloadAccessToken`, `GetResourceOauth2Token` on `*`.
-
----
-
-### 4. OAuth Provider API Parameter Mismatch
-
-**Error**: `Unknown parameter in input: "credentialProviderArn"` when creating OAuth provider via Lambda custom resource.
-
-**Cause**: The `create_oauth2_credential_provider` API expects `clientId` and `clientSecret` inside `customOauth2ProviderConfig`, not at the top level. Also, the vendor must be `CustomOauth2` (not `CustomOAuth`), and discovery URL goes inside `oauthDiscovery.discoveryUrl`.
-
-**Fix**: Correct API call structure:
-```python
-client.create_oauth2_credential_provider(
-    name=provider_name,
-    credentialProviderVendor='CustomOauth2',
-    oauth2ProviderConfigInput={
-        'customOauth2ProviderConfig': {
-            'oauthDiscovery': { 'discoveryUrl': discovery_url },
-            'clientId': client_id,
-            'clientSecret': client_secret,
-        },
-    },
-)
+```bash
+export ADMIN_EMAIL="your-email@example.com"
 ```
 
+### Step 3: Deploy using CDK
+
+```bash
+cd cdk && npm install && npm run build && npx cdk bootstrap && npx cdk deploy --all --require-approval never
+```
+
+The deployment script installs CDK dependencies, builds TypeScript code, bootstraps the CDK if needed, then deploys the three stacks in sequence. The process takes approximately 15-20 minutes. After completion, you will have five CloudFormation Stacks within your account.
+
+After deployment completes of the last CloudFormation Stack `FinOpsAgentRuntimeStack`, note the following outputs from the terminal:
+
+- `User Pool Id` - Cognito Identity Pool ID
+- `User Pool Client Id` - Cognito User Pool Client ID
+- `Identity Pool Id` - Identity Pool ID
+- `AgentCore ARN` – AgentCore runtime ARN
+
+The following screenshot shows you what the Outputs will look like.
+
+<!-- TODO: Add CFN output screenshot -->
+![FinOps AgentCore CFN Output](IMAGE_PLACEHOLDER)
+
+You will receive an email with a temporary password for the admin user.
+
+With the infrastructure deployed, you can now configure and use the web application to interact with your cost data.
+
+## Deploy the Amplify application
+
+While we provide a sample frontend hosted on AWS Amplify, you can integrate the solution with your own custom frontend or connect it to your existing enterprise communication tools. The frontend application requires manual deployment using code from the GitHub repository:
+
+1. Download the frontend code `AWS-Amplify-Frontend.zip` from [GitHub](https://github.com/aws-samples/sample-finops-agent-amazon-bedrock-agentcore/blob/main/amplify-frontend/AWS-Amplify-Frontend.zip).
+2. Navigate to AWS Amplify in the [AWS Management Console](https://console.aws.amazon.com/).
+3. Choose **Deploy without Git provider**.
+4. Upload the application .zip file.
+5. Wait for deployment to complete.
+6. Note the generated domain URL.
+
+## Understanding the MCP servers
+
+MCP servers ([AWS Billing and Cost Management MCP Server](https://awslabs.github.io/mcp/servers/billing-cost-management-mcp-server/) and [AWS Pricing MCP Server](https://awslabs.github.io/mcp/servers/aws-pricing-mcp-server)) provide cost management and pricing tools. Each MCP server is designed to handle specific types of queries. The AWS Billing and Cost Management MCP Server focuses on historical spend analysis, budget monitoring, cost anomaly detection, and optimization recommendations using your actual AWS account data. The AWS Pricing MCP Server handles forward-looking queries by providing real-time pricing data from the AWS Price List API, enabling cost estimation for new workloads and infrastructure as code (IaC) projects.
+
+## Using the web application
+
+Open the URL provided after creating your AWS Amplify application. You will be prompted to enter your Amazon Cognito and AgentCore configuration details. Input the values from your stack output (collected earlier). From the Agent Type menu, select **AgentCore Agent**, enter the deployment Region, and choose an Agent Name (in this example, we use **AgentCore Agent**). Save the configuration as shown in the following image:
+
+<!-- TODO: Add frontend configuration screenshot -->
+![FinOps FrontEnd Configuration](IMAGE_PLACEHOLDER)
+
+Sign in with your username and the temporary password sent to your email. At first sign-in, you will be asked to reset your password. After resetting your password, you can start asking questions. For example, ask "`What are my AWS costs for January 2026?`" When you ask about costs, the system retrieves data using the `get_cost_and_usage` tool to retrieve your cost data and provides a detailed breakdown by service.
+
+Ask “`What are my current cost savings opportunities?`” The agent calls multiple tools to identify optimization opportunities:
+
+- `get_rightsizing_recommendations` – identifies over-provisioned or underutilized resources
+- `get_savings_plans_recommendations` – suggests commitment-based discount plans
+- `get_compute_optimizer_recommendations` – provides compute optimization insights
+
+Next, ask "`Can you give me details of any underutilized EC2 instances?`" Because of conversation memory, follow-up questions maintain context from the previous question and provide detailed information about specific instances.
+
+See this interactive session in action in the following video.
+
+<!-- TODO: Add demo walkthrough GIF -->
+![FinOps Agent Demo Walkthru](IMAGE_PLACEHOLDER)
+
+Here are additional sample queries to try:
+
+- "Show me my costs by Region for the last 30 days"
+- "What's my cost forecast for the next 3 months?"
+- "Compare pricing for t3.micro and t3.small instances"
+- "Are there any cost anomalies in my account?"
+- "What's my free tier usage status?"
+- "Show me my budgets and their current status"
+- "What's the pricing for Lambda in us-east-1?"
+- "Get rightsizing recommendations for my EC2 instances"
+
+### Conversational memory in action
+
+AgentCore Memory maintains context across multiple questions:
+
+**You:** "What are my top 5 services by cost?"
+**Agent:** (Provides list of top 5 services)
+
+**You:** "What about the second one?"
+**Agent:** (Remembers the previous list and provides details)
+
+**You:** "How can I optimize it?"
+**Agent:** (Provides optimization recommendations)
+
+See this interactive session in action in the following video.
+
+<!-- TODO: Add memory usage GIF -->
+![FinOps Agent Memory Usage](IMAGE_PLACEHOLDER)
+
+AgentCore Memory automatically manages conversation history, and the Strands session manager retrieves relevant context for each request.
+
+## Clean up
+
+To avoid incurring future charges, delete the resources created by this solution.
+
+**Delete the stacks:**
+
+```bash
+cd sample-finops-agent-amazon-agentcore/cdk
+npx cdk destroy --all
+```
+
+You will be asked with the following:
+
+```
+Are you sure you want to delete: FinOpsAgentRuntimeStack, FinOpsAgentCoreGatewayStack, FinOpsMCPRuntimeStack, FinOpsAuthStack, FinOpsImageStack (y/n)
+```
+
+Type `y` and this will delete the stacks.
+
+**Delete the Amplify application:**
+
+1. In the Amplify console, in the left-hand navigation for your app, choose **App settings**, and select **General settings**.
+2. In the **General settings** section, choose **Delete app**.
+
+## Conclusion
+
+In this post, we showed you how to build a FinOps agent using AgentCore. The agent provides natural language access to cost analysis and optimization recommendations by consolidating data from AWS Cost Explorer, AWS Budgets, and Compute Optimizer.
+
+The architecture combines AgentCore Runtime, Gateway, Memory, Identity, the Strands Framework, MCP, and Claude Sonnet 4.5. You can extend this foundation to other use cases like DevOps automation, security analysis, and compliance monitoring. Get started today by visiting the [GitHub repository](https://github.com/aws-samples/sample-finops-agent-amazon-agentcore).
+
+## About the authors
+
+<!-- TODO: Add author photo -->
+
+
+**Salman Ahmed**
+
+Salman is a Senior Technical Account Manager at AWS. He specializes in guiding customers through the design, implementation, and support of AWS solutions. Combining his networking expertise with a drive to explore new technologies, he helps organizations successfully navigate their cloud journey. Outside of work, he enjoys photography, traveling, and watching his favorite sports teams.
+
 ---
 
-### 5. OAuth Provider Lambda Missing CreateTokenVault Permission
+<!-- TODO: Add author photo -->
 
-**Error**: `AccessDeniedException: not authorized to perform bedrock-agentcore:CreateTokenVault`
 
-**Cause**: Creating an OAuth credential provider also creates a token vault. The Lambda role needed additional permissions.
+**Ravi Kumar**
 
-**Fix**: Added to the Lambda role:
-- `bedrock-agentcore:CreateTokenVault`, `bedrock-agentcore:GetTokenVault`
-- `secretsmanager:CreateSecret`, `secretsmanager:DeleteSecret`, `secretsmanager:PutSecretValue`, `secretsmanager:TagResource` on `bedrock-agentcore-identity*`
+Ravi is a Senior Technical Account Manager in AWS Enterprise Support who helps customers in the travel and hospitality industry to streamline their cloud operations on AWS. He is a results-driven IT professional with over 20 years of experience. Ravi is passionate about generative AI and actively explores its applications in cloud computing. In his free time, Ravi enjoys creative activities like painting. He also likes playing cricket and traveling to new places.
 
 ---
 
-### 6. OAuth Token Mismatch Between Gateway and Runtime
+<!-- TODO: Add author photo -->
 
-**Error**: `Error parsing ClientCredentials response (Status Code: 400)` when Gateway tries to add MCP targets.
 
-**Cause**: Gateway's OAuth provider was using its own Cognito User Pool, but the MCP runtimes' JWT authorizer was configured to trust AuthStack's Cognito. Tokens from different issuers are rejected.
+**Sergio Barraza**
 
-**Fix**: Gateway's OAuth provider must use the same Cognito (AuthStack) that the MCP runtimes trust. Both the runtime's `DiscoveryUrl` and the OAuth provider's `discoveryUrl` must point to the same Cognito User Pool.
-
----
-
-### 7. OAuth Scope Mismatch
-
-**Error**: `Error parsing ClientCredentials response` — Cognito returns 400 when requesting a scope that doesn't exist.
-
-**Cause**: AuthStack's resource server was `finops-mcp-resource-server` with scopes `mcp.read`/`mcp.write`, but Gateway targets requested scope `mcp-runtime-server/invoke`.
-
-**Fix**: Changed AuthStack's resource server to `mcp-runtime-server` with scope `invoke`, matching what the Gateway targets request.
-
----
-
-### 8. `streamable_http_app` AttributeError
-
-**Error**: `AttributeError: 'FastMCP' object has no attribute 'streamable_http_app'`
-
-**Cause**: The billing MCP server uses `fastmcp` package (not `mcp.server.fastmcp`). The `fastmcp` package's `FastMCP` class doesn't have `streamable_http_app()` — that method exists only in the `mcp` SDK's `FastMCP`.
-
-**Fix**: Instead of creating a Starlette ASGI app manually, use `mcp.run(transport='streamable-http', host='0.0.0.0', port=8000, stateless_http=True)` which `fastmcp` handles internally.
-
----
-
-### 9. Shell Quoting in Transform Script
-
-**Error**: `SyntaxError: invalid syntax` — `mcp.run(transport=streamable-http)` missing quotes.
-
-**Cause**: Python string values inside a `python3 -c "..."` shell command lost their double quotes due to shell escaping.
-
-**Fix**: Use single quotes inside the Python triple-quoted string: `mcp.run(transport='streamable-http', host='0.0.0.0', ...)`.
-
----
-
-### 10. Missing `@app.entrypoint` Decorator
-
-**Error**: `No entrypoint defined` — runtime returns 500 on every request.
-
-**Cause**: The `@app.entrypoint` decorator on the `invoke()` function was accidentally removed during a code edit.
-
-**Fix**: Ensure `@app.entrypoint` is always present above the `invoke()` function. This is what tells `BedrockAgentCoreApp` which function handles incoming requests.
-
----
-
-### 11. Nova Model Fails with Hyphenated Tool Names
-
-**Error**: `Response ended prematurely` — intermittent, only when the model tries to call tools with hyphens in their names (e.g., `cost-explorer`, `free-tier-usage`).
-
-**Cause**: Amazon Nova models have issues with hyphens in tool names. Bedrock's `ConverseStream` API expects tool names matching `^[a-zA-Z][a-zA-Z0-9_]*$`. Nova enforces this strictly; Claude does not.
-
-**Fix**: Switched from `us.amazon.nova-pro-v1:0` to `us.anthropic.claude-sonnet-4-5-20250929-v1:0`. Claude handles hyphenated tool names correctly. Alternative fix: rename tools at the source in the transform scripts.
+Sergio is a Senior Technical Account Manager at AWS, helping customers on designing and optimizing cloud solutions. With more than 25 years in software development, he guides customers through AWS services adoption. Outside of work, Sergio is a multi-instrument musician playing guitar, piano, and drums, and he also practices Wing Chun Kung Fu.
