@@ -16,8 +16,7 @@ With these components in place, the following section examines how they work tog
 
 The following diagram represents the solution architecture, which contains five key sections:
 
-<!-- TODO: Add architecture diagram image -->
-![FinOps AgentCore Agent Diagram](IMAGE_PLACEHOLDER)
+![FinOps AgentCore Agent Diagram](images/1.FinOpsAgentCoreAgent-Diagram.png)
 
 **Section A** – Authentication Infrastructure: First, the `FinOpsAuthStack` CDK stack deploys the authentication infrastructure (Amazon Cognito User Pool, Identity Pool, M2M client, resource server, and IAM roles). The User Pool handles user authentication, the M2M client enables machine-to-machine OAuth 2.0 flows between the Gateway and MCP runtimes, and the Identity Pool provides temporary AWS credentials that allow the frontend application to securely communicate with the AgentCore Runtime.
 
@@ -95,8 +94,7 @@ After deployment completes of the last CloudFormation Stack `FinOpsAgentRuntimeS
 
 The following screenshot shows you what the Outputs will look like.
 
-<!-- TODO: Add CFN output screenshot -->
-![FinOps AgentCore CFN Output](IMAGE_PLACEHOLDER)
+![FinOps AgentCore CFN Output](images/2.FinOpsAgentCore-CFN-Output.png)
 
 You will receive an email with a temporary password for the admin user.
 
@@ -121,8 +119,7 @@ MCP servers ([AWS Billing and Cost Management MCP Server](https://awslabs.github
 
 Open the URL provided after creating your AWS Amplify application. You will be prompted to enter your Amazon Cognito and AgentCore configuration details. Input the values from your stack output (collected earlier). From the Agent Type menu, select **AgentCore Agent**, enter the deployment Region, and choose an Agent Name (in this example, we use **AgentCore Agent**). Save the configuration as shown in the following image:
 
-<!-- TODO: Add frontend configuration screenshot -->
-![FinOps FrontEnd Configuration](IMAGE_PLACEHOLDER)
+![FinOps FrontEnd Configuration](images/3.FinOpsFrontEndConfiguration.png)
 
 Sign in with your username and the temporary password sent to your email. At first sign-in, you will be asked to reset your password. After resetting your password, you can start asking questions. For example, ask "`What are my AWS costs for January 2026?`" When you ask about costs, the system retrieves data using the `get_cost_and_usage` tool to retrieve your cost data and provides a detailed breakdown by service.
 
@@ -136,8 +133,7 @@ Next, ask "`Can you give me details of any underutilized EC2 instances?`" Becaus
 
 See this interactive session in action in the following video.
 
-<!-- TODO: Add demo walkthrough GIF -->
-![FinOps Agent Demo Walkthru](IMAGE_PLACEHOLDER)
+![FinOps Agent Demo Walkthru](images/4.FinOpsAgentDemoWalkthru.gif)
 
 Here are additional sample queries to try:
 
@@ -165,8 +161,7 @@ AgentCore Memory maintains context across multiple questions:
 
 See this interactive session in action in the following video.
 
-<!-- TODO: Add memory usage GIF -->
-![FinOps Agent Memory Usage](IMAGE_PLACEHOLDER)
+![FinOps Agent Memory Usage](images/5.FinOpsAgentMemoryUsage.gif)
 
 AgentCore Memory automatically manages conversation history, and the Strands session manager retrieves relevant context for each request.
 
