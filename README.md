@@ -1,3 +1,8 @@
+> [!NOTE]
+> The content presented here serves as an example intended solely for educational objectives and should not be implemented in a live production environment without proper modifications and rigorous testing.
+
+#Build a FinOps agent using Amazon Bedrock AgentCore
+
 Managing costs across multiple AWS accounts often requires finance teams to query data from several sources to get a complete view of spending and optimization opportunities. In this post, you learn how to build a FinOps agent using [Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/agentcore/) that helps your finance team manage AWS costs across multiple accounts. This conversational agent consolidates data from [AWS Cost Explorer](https://aws.amazon.com/aws-cost-management/aws-cost-explorer/), [AWS Budgets](https://aws.amazon.com/aws-cost-management/aws-budgets/), and [AWS Compute Optimizer](https://aws.amazon.com/compute-optimizer/) into a single interface, so your team can ask questions like "What are my top cost drivers this month?" and receive immediate answers.
 
 You learn to set up the architecture, deploy the solution using [AWS Cloud Development Kit (AWS CDK)](https://aws.amazon.com/cdk/), and interact with your cost data through natural language queries. The solution uses AgentCore, [Anthropic Claude Sonnet 4.5](https://aws.amazon.com/blogs/aws/introducing-claude-sonnet-4-5-in-amazon-bedrock-anthropics-most-intelligent-model-best-for-coding-and-complex-agents/), the [Strands Agent SDK](https://strandsagents.com/), and the [Model Context Protocol (MCP)](https://aws.amazon.com/solutions/guidance/deploying-model-context-protocol-servers-on-aws/).
