@@ -1,0 +1,7 @@
+# Semgrep ignore file
+# CloudFormation custom resource Lambda functions use urllib.request.urlopen
+# to send responses to CloudFormation's pre-signed S3 URLs.
+# This is the standard AWS pattern (see aws-cdk cfn-response module).
+# The URLs are CloudFormation-controlled, not user-controlled.
+lambda/build-trigger/
+lambda/build-waiter/

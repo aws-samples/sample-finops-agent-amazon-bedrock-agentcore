@@ -105,8 +105,11 @@ def send_cfn_response(event, status, data=None, reason=None, physical_id=None):
         'LogicalResourceId': event['LogicalResourceId'],
         'Data': data or {},
     })
+    response_url = event['ResponseURL']
+    if not response_url.startswith('https://'):
+        raise ValueError(f'Invalid response URL scheme')
     req = urllib.request.Request(
-        event['ResponseURL'],
+        response_url,
         data=response_body.encode('utf-8'),
         headers={'Content-Type': ''},
         method='PUT',

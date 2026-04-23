@@ -18,7 +18,12 @@ codebuild = boto3.client('codebuild')
 
 
 def send_cfn_response(event, status, data=None, reason=None):
-    """Send response to CloudFormation via the pre-signed response URL."""
+    """Send response to CloudFormation via the pre-signed response URL.
+
+    The response URL is provided by CloudFormation and is always an
+    HTTPS pre-signed S3 URL. This follows the standard AWS custom
+    resource response pattern (see aws-cdk cfn-response module).
+    """
     response_body = json.dumps({
         'Status': status,
         'Reason': reason or f'See CloudWatch Log Stream: {event.get("LogStreamName", "N/A")}',
@@ -30,8 +35,11 @@ def send_cfn_response(event, status, data=None, reason=None):
     })
 
     logger.info(f'Sending CFN response: {status}')
+    response_url = event['ResponseURL']
+    if not response_url.startswith('https://'):
+        raise ValueError(f'Invalid response URL scheme: {response_url[:20]}...')
     req = urllib.request.Request(
-        event['ResponseURL'],
+        response_url,
         data=response_body.encode('utf-8'),
         headers={'Content-Type': ''},
         method='PUT',

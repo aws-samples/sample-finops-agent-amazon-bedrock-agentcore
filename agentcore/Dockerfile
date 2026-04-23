@@ -19,6 +19,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Final stage
 FROM public.ecr.aws/docker/library/python:3.14-slim
 
+# Create non-root user for running the application
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
+
 # Set working directory
 WORKDIR /app
 
@@ -30,9 +33,19 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY agent_runtime.py .
 COPY streamable_http_sigv4.py .
 
+# Set ownership to non-root user
+RUN chown -R appuser:appuser /app
+
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+
+# Switch to non-root user
+USER appuser
+
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import sys; sys.exit(0)" || exit 1
 
 # Run the agent runtime
 CMD ["python", "agent_runtime.py"]

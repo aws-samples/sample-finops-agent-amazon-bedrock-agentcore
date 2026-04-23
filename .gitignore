@@ -66,6 +66,11 @@ build/
 *.tmp
 *.temp
 
+# Guidance Factory outputs
+guidance-docs/
+.ash/
+temp/
+
 # AWS
 .aws-sam/
 
