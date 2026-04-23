@@ -177,7 +177,7 @@ To avoid incurring future charges, delete the resources created by this solution
 **Delete the stacks:**
 
 ```bash
-cd sample-finops-agent-amazon-agentcore/cdk
+cd sample-finops-agent-amazon-bedrock-agentcore/cdk
 npx cdk destroy --all
 ```
 
