@@ -28,7 +28,7 @@ The Guidance uses **Amazon Bedrock AgentCore Runtime** to host a custom agent bu
 
 ### Architecture diagram
 
-![Architecture diagram for Guidance for Building a FinOps Agent Using Amazon Bedrock AgentCore on AWS](assets/images/1.FinOpsAgentCoreAgent-Diagram.png)
+![Architecture diagram for Guidance for Building a FinOps Agent Using Amazon Bedrock AgentCore on AWS](assets/images/architecture-diagram.png)
 
 The architecture contains five key sections:
 
